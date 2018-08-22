@@ -1,2 +1,2 @@
 # org_spider
-python spider for Chinese public organization Data
+python spider for China public organization Data
