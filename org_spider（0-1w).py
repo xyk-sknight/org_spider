@@ -32,7 +32,6 @@ def org_page_open(browser, orgnum):
     '''分析页面数据'''
     for item in org_item(html):
         write_sql(item)#写入数据库
-        write_to_log(item['name']+';'+item['info_write_time'])#写入日志
     browser.switch_to.parent_frame()
     org_page_close = browser.find_element_by_css_selector("a[class=\"layui-layer-ico layui-layer-close layui-layer-close2\"]")
     org_page_close.click()
@@ -44,7 +43,7 @@ def org_item(html):
     '''企业名称+信用代码'''
     name_code = html.xpath('//div/h3/text()')
     name = re.findall('(.*?)\xa0\xa0', ''.join(name_code))
-    code = re.findall('\d.*', ''.join(name_code))
+    code = re.findall('：(.*$)', ''.join(name_code))
     #print(name)
     #print(code)
     '''组织类型'''
@@ -103,6 +102,7 @@ def write_sql(data):
     except:
         print(data)
         print('Failed')
+        write_to_log(data)
         db.rollback()
     db.close()
 
@@ -110,8 +110,8 @@ def write_sql(data):
 '''查询初始化'''
 
 
-def page_start():
-    with open('result.txt', 'r')as f:
+def page_start(spider_num):
+    with open('page_log['+str(spider_num)+'].txt', 'r')as f:
         text = re.findall('(.*?);', f.read())
     page = int(text[-1])#开始页面
     return  page
@@ -130,16 +130,16 @@ def go_to_page(browser,page):
     button_goTopage.click()
 
 
-'''用于初始查询页面定位'''
+'''爬取进度用于初始查询页面定位'''
 
 
-def write_to_file(content):
-    with open('page_log.txt', 'a', encoding='utf-8') as f:
+def write_to_file(content,spider_num):
+    with open('page_log['+str(spider_num)+'].txt', 'a', encoding='utf-8') as f:
         print(type(json.dumps(content)))
         f.write(json.dumps(content, ensure_ascii=False)+';')
 
 
-'''爬取记录'''
+'''爬取失败记录'''
 
 
 def write_to_log(content):
@@ -148,7 +148,7 @@ def write_to_log(content):
         f.write(json.dumps(content, ensure_ascii=False)+'\n')
 
 
-def main():
+def main(page_tag,spider_num):
     browser = browser_ini()
     '''初始化'''
     browser.get('http://www.chinanpo.gov.cn/search/orgindex.html')  # 打开组织查询主页面
@@ -157,17 +157,15 @@ def main():
     button_local = browser.find_element_by_css_selector('a[href="javascript:changeTab(2);"]')
     button_local.click()
 
-    page_s = page_start()  # 获得开始页面
+    page_s = page_start(spider_num)  # 获得开始页面
     go_to_page(browser, page_s)  # 前往开始页面
 
-    for page in range(40000-page_s):
-        write_to_file(page + page_s)  # 写入当前页数
+    for page in range(page_tag-page_s):#目标页数-初始页数
+        write_to_file(page + page_s,spider_num)  # 写入当前页数
         time.sleep(1)  # 休息一下
         '''对当前页面下20个组织进行：打开页面抓取数据后关闭'''
         for org_pageNo in range(1, 21):
             time.sleep(1)
-
-            write_to_log('第' + str(page + page_s) + '页' + str(org_pageNo))
             org_page_open(browser, org_pageNo)
             print('第', page+page_s, '页', org_pageNo)
 
@@ -177,5 +175,33 @@ def main():
         browser.implicitly_wait(10)  # 隐式时间等待
     browser.close()
 
+def page_log_create():
+    for spider_num in range(10):
+        with open('page_log[' + str(spider_num) + '].txt', 'a', encoding='utf-8') as f:
+            first_page = 10000+spider_num*1000
+            f.write(json.dumps(first_page, ensure_ascii=False) + ';')
 
-main()
+
+'''创建初始页面记录文件'''
+#page_log_create()
+
+
+import threading
+
+
+'''多线程数组初始化'''
+threads = []
+for i in range(10):
+    print('main:(',1000+i*1000,'.',i,')')
+    t = threading.Thread(target=main,args=(11000+i*1000,i))
+    threads.append(t)
+'''多线程开始'''
+if __name__ == '__main__':
+    for t in threads:
+        t.setDaemon(True)
+        t.start()
+
+    t.join()
+    print('finished')
+
+
