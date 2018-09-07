@@ -1,3 +1,6 @@
+# Python爬取组织机构代码
+# 作者: SK
+
 import pymysql
 import re
 from selenium import webdriver
@@ -6,7 +9,11 @@ import time
 import json
 from selenium.webdriver.chrome.options import Options
 
+'''
+爬取（社会组织）地方登记所有数据
+存入字段：组织名称，统一信用代码，组织类型，法人，联系电话，成立登记时间，数据记录时间
 
+'''
 def browser_ini():
     chrome_options = Options()
     chrome_options.add_argument('window-size=1920x3000')  # 指定浏览器分辨率
@@ -22,34 +29,40 @@ def browser_ini():
 
 
 def org_page_open(browser, orgnum):
+    '''
+    分析详细信息页面数据
+    :param browser: 浏览器当前页面
+    :param orgnum:  检索页面组织序号，从1到20
+    :return:
+    '''
     org_page = browser.find_element_by_xpath('//table/tbody/tr['+str(orgnum)+']/td/a')
-    org_page.click()
+    org_page.click()#进入当前组织详细信息iframe页面
     browser.implicitly_wait(30)
     time.sleep(2)  # 假装看网页
-    browser.switch_to.frame(0)
-    text= browser.page_source
-    html = etree.HTML(text)
-    '''分析页面数据'''
+    browser.switch_to.frame(0) # 切换到内嵌页面
+    text= browser.page_source# 获得当前页面JS渲染后源代码
+    html = etree.HTML(text)# 页面代码格式化为xpath可用形式
     for item in org_item(html):
-        write_sql(item)#写入数据库
+        write_sql(item)# 调用函数写入数据库
     browser.switch_to.parent_frame()
     org_page_close = browser.find_element_by_css_selector("a[class=\"layui-layer-ico layui-layer-close layui-layer-close2\"]")
-    org_page_close.click()
+    org_page_close.click()# 关闭iframe
     time.sleep(1)
 
 
 def org_item(html):
-    ''''''
+    '''
+    对详细信息页面进行爬取，获得所需要的字段信息
+    :param html: 格式化后的详细信息页面html代码
+    :return: 爬取后的字段存入到字典并返回
+    '''
     '''企业名称+信用代码'''
     name_code = html.xpath('//div/h3/text()')
     name = re.findall('(.*?)\xa0\xa0', ''.join(name_code))
     code = re.findall('：(.*$)', ''.join(name_code))
-    #print(name)
-    #print(code)
     '''组织类型'''
     type = html.xpath('//table/tbody/tr[4]/td[2]/text()')
     type = ''.join(type).split()
-    #print(type)
     '''企业地址'''
     address = html.xpath('//table/tbody/tr[5]/td[2]/text()')
     a = []
@@ -57,21 +70,17 @@ def org_item(html):
         if (add.split() != []):
             a.append(''.join(add.split()))
     address = [''.join(a)]
-    #print(address)
     '''法人'''
     representative = html.xpath('//table/tbody/tr[2]/td[2]/text()')
     representative = ''.join(representative).split()
-    #print(representative)
     '''电话'''
     tel = html.xpath('//table/tbody/tr[6]/td[2]/text()')
-    tel = tel[0].split()
+    tel = ''.join(tel).split()
     '''企业登记时间'''
     ini_time = html.xpath('//table/tbody/tr[2]/td[4]/text()')
     ini_time = ini_time[0].split()
-    #print(ini_time)
     '''写入时间'''
     info_time = time.strftime('%Y-%m-%d %H:%M:%S',time.localtime(time.time()))
-    #print(info_time)
     yield {
         'name': ''.join(name),
         'code': ''.join(code),
@@ -88,7 +97,11 @@ def org_item(html):
 
 
 def write_sql(data):
-    '''登录MYSQL,连接至social_organization数据库'''
+    '''
+    登录MYSQL,连接至social_organization数据库,写入数据
+    :param data: 单个组织的数据字典
+    :return:
+    '''
     db = pymysql.connect(host='localhost', user='root', password='123456', port=3306, db='social_organization')
     cursor = db.cursor()
     table = 'org2'
@@ -111,13 +124,18 @@ def write_sql(data):
 
 
 def page_start(spider_num):
+    '''
+    多线程断点续爬
+    :param spider_num: 爬虫线程编号
+    :return:
+    '''
     with open('page_log['+str(spider_num)+'].txt', 'r')as f:
         text = re.findall('(.*?);', f.read())
     page = int(text[-1])#开始页面
     return  page
 
 
-'''到达开始查询的页面'''
+'''跳转到开始查询的页面'''
 
 
 def go_to_page(browser,page):
@@ -150,7 +168,6 @@ def write_to_log(content):
 
 def main(page_tag,spider_num):
     browser = browser_ini()
-    '''初始化'''
     browser.get('http://www.chinanpo.gov.cn/search/orgindex.html')  # 打开组织查询主页面
     browser.implicitly_wait(10)  # 隐式时间等待
     '''切换到地方登记页面'''
@@ -183,7 +200,7 @@ def page_log_create():
 
 
 '''创建初始页面记录文件'''
-#page_log_create()
+page_log_create()
 
 
 import threading
@@ -191,8 +208,8 @@ import threading
 
 '''多线程数组初始化'''
 threads = []
-for i in range(10):
-    print('main:(',1000+i*1000,'.',i,')')
+for i in range(10): #
+    print('main:(',1000+i*1000,'.',i,')') #开始页面+单个线程任务量
     t = threading.Thread(target=main,args=(11000+i*1000,i))
     threads.append(t)
 '''多线程开始'''
@@ -200,7 +217,6 @@ if __name__ == '__main__':
     for t in threads:
         t.setDaemon(True)
         t.start()
-
     t.join()
     print('finished')
 
